@@ -1,33 +1,58 @@
 package main
 
 import (
-	"errors"
+	"database/sql"
 	"fmt"
 	"os"
 
+	_ "github.com/lib/pq"
 	"github.com/zulkou/blog-aggregator/internal/config"
+	"github.com/zulkou/blog-aggregator/internal/database"
 )
 
+type state struct {
+    cfg     *config.Config
+    db      *database.Queries
+}
+
 func main() {
+    exitCode := run()
+    os.Exit(exitCode)
+}
+
+func run() int {
     cfg, err := config.Read()
     if err != nil {
-        fmt.Println(err)
+        fmt.Fprintf(os.Stderr, "Error in reading config file: %v\n", err)
+        return 1
     }
 
+    db, err := sql.Open("postgres", cfg.DBURL)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Error connecting to database: %v\n", err)
+        return 1
+    }
+    defer db.Close()
+    dbQueries := database.New(db)
+    
     s := state {
         cfg: &cfg,
+        db: dbQueries,
     }
+ 
     cmds := commands{
         handlers: make(map[string]func(*state, command) error),
     }
 
     cmds.register("login", handlerLogin)
+    cmds.register("register", handlerRegister)
+    cmds.register("reset", handlerReset)
 
     args := os.Args
 
     if len(args) < 2 {
-        fmt.Println("require command name")
-        os.Exit(1)
+        fmt.Fprintf(os.Stderr, "Commands not specified\n")
+        return 1
     }
     
     cmd := command{
@@ -37,48 +62,9 @@ func main() {
 
     err = cmds.run(&s, cmd)
     if err != nil {
-        fmt.Println(err)
-        os.Exit(1)
-    }
-}
-
-type state struct {
-    cfg     *config.Config
-}
-
-type command struct {
-    name    string
-    args    []string
-}
-
-type commands struct {
-    handlers    map[string]func(s *state, cmd command) error
-}
-
-func handlerLogin(s *state, cmd command) error {
-    if len(cmd.args) == 0 || len(cmd.args) > 1 {
-        return errors.New("only accepts one argument")
+        fmt.Fprintf(os.Stderr, "Error running command: %v\n", err)
+        return 1
     }
 
-    err := s.cfg.SetUser(cmd.args[0])
-    if err != nil {
-        return fmt.Errorf("user not found: %w", err)
-    }
-
-    fmt.Printf("State assigned to %s, Welcome!\n", s.cfg.CurrentUserName)
-    return nil
+    return 0
 }
-
-func (c *commands) register(name string, f func(s *state, cmd command) error) {
-    c.handlers[name] = f
-}
-
-func (c *commands) run(s *state, cmd command) error {
-    handler, exists := c.handlers[cmd.name]
-    if !exists {
-        return fmt.Errorf("command not found: %s", cmd.name)
-    }
-
-    return handler(s, cmd)
-}
-
