@@ -15,11 +15,6 @@ type state struct {
     db      *database.Queries
 }
 
-func main() {
-    exitCode := run()
-    os.Exit(exitCode)
-}
-
 func run() int {
     cfg, err := config.Read()
     if err != nil {
@@ -48,6 +43,7 @@ func run() int {
     cmds.register("register", handlerRegister)
     cmds.register("reset", handlerReset)
     cmds.register("users", handlerUsers)
+    cmds.register("agg", handlerAgg)
 
     args := os.Args
 
@@ -69,3 +65,9 @@ func run() int {
 
     return 0
 }
+
+func main() {
+    exitCode := run()
+    os.Exit(exitCode)
+}
+

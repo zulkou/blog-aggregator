@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"time"
 
-    _ "github.com/lib/pq"
 	"github.com/google/uuid"
+	_ "github.com/lib/pq"
 	"github.com/zulkou/blog-aggregator/internal/database"
+	"github.com/zulkou/blog-aggregator/rss"
 )
 
 type command struct {
@@ -116,6 +117,23 @@ func handlerUsers(s *state, cmd command) error {
             fmt.Printf("* %s\n", user.Name) 
         }
     }
+
+    return nil
+}
+
+func handlerAgg(s *state, cmd command) error {
+    if len(cmd.args) != 0 {
+        return errors.New("The agg command expects ZERO arguments")
+    }
+
+    url := "https://www.wagslane.dev/index.xml"
+
+    res, err := rss.FetchFeed(context.Background(), url)
+    if err != nil {
+        return fmt.Errorf("Failed fetching feeds: %w", err)
+    }
+
+    fmt.Println(res)
 
     return nil
 }
