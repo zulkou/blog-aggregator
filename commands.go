@@ -36,7 +36,7 @@ func (c *commands) run(s *state, cmd command) error {
 }
 
 func handlerLogin(s *state, cmd command) error {
-    if len(cmd.args) == 0 || len(cmd.args) > 1 {
+    if len(cmd.args) != 1 {
         return errors.New("The login command expects ONE argument")
     }
 
@@ -57,7 +57,7 @@ func handlerLogin(s *state, cmd command) error {
 }
 
 func handlerRegister(s *state, cmd command) error {
-    if len(cmd.args) == 0 || len(cmd.args) > 1 {
+    if len(cmd.args) != 1 {
         return errors.New("The register command expects ONE argument")
     }
 
@@ -134,6 +134,36 @@ func handlerAgg(s *state, cmd command) error {
     }
 
     fmt.Println(res)
+
+    return nil
+}
+
+func handlerAddFeed(s *state, cmd command) error {
+    if len(cmd.args) != 2 {
+        return errors.New("The addfeed command expects TWO arguments")
+    }
+
+    name := cmd.args[0]
+    url := cmd.args[1]
+
+    user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
+    if err != nil {
+        return fmt.Errorf("Failed to fetch current user: %w", err)
+    }
+
+    feed, err := s.db.CreateFeed(context.Background(), database.CreateFeedParams{
+        ID: uuid.New(),
+        CreatedAt: time.Now(),
+        UpdatedAt: time.Now(),
+        Name: name,
+        Url: url,
+        UserID: user.ID,
+    })
+    if err != nil {
+        return fmt.Errorf("Failed to store feed to db: %w", err)
+    }
+
+    fmt.Printf("Name: %v\nURL: %v\n", feed.Name, feed.Url)
 
     return nil
 }
