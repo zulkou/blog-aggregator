@@ -42,7 +42,7 @@ func handlerLogin(s *state, cmd command) error {
 
     name := cmd.args[0]
 
-    _, err := s.db.GetUser(context.Background(), name)
+    _, err := s.db.GetUserByName(context.Background(), name)
     if err != nil {
         return fmt.Errorf("Failed to retrieve %v: %w\n", name, err)
     }
@@ -63,7 +63,7 @@ func handlerRegister(s *state, cmd command) error {
 
     name := cmd.args[0]
     
-    _, err := s.db.GetUser(context.Background(), name)
+    _, err := s.db.GetUserByName(context.Background(), name)
     if err == nil {
         return fmt.Errorf("User %s already exists\n", name)
     } else if !errors.Is(err, sql.ErrNoRows) {
@@ -146,7 +146,7 @@ func handlerAddFeed(s *state, cmd command) error {
     name := cmd.args[0]
     url := cmd.args[1]
 
-    user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
+    user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
     if err != nil {
         return fmt.Errorf("Failed to fetch current user: %w", err)
     }
@@ -164,6 +164,28 @@ func handlerAddFeed(s *state, cmd command) error {
     }
 
     fmt.Printf("Name: %v\nURL: %v\n", feed.Name, feed.Url)
+
+    return nil
+}
+
+func handlerFeeds(s *state, cmd command) error {
+    if len(cmd.args) != 0 {
+        return errors.New("The feeds command expects ZERO arguments")
+    }
+
+    feeds, err := s.db.GetFeeds(context.Background())
+    if err != nil {
+        return fmt.Errorf("Failed to fetch feeds: %w", err)
+    }
+
+    for _, feed := range(feeds) {
+        user, err := s.db.GetUserByID(context.Background(), feed.UserID)
+        if err != nil {
+            return fmt.Errorf("Failed to fetch feed's user: %w", err)
+        }
+
+        fmt.Printf("---\nName: %v\nURL: %v\nUser: %v\n", feed.Name, feed.Url, user.Name)
+    }
 
     return nil
 }
