@@ -159,11 +159,24 @@ func handlerAddFeed(s *state, cmd command) error {
         Url: url,
         UserID: user.ID,
     })
+
     if err != nil {
         return fmt.Errorf("Failed to store feed to db: %w", err)
     }
 
-    fmt.Printf("Name: %v\nURL: %v\n", feed.Name, feed.Url)
+    _, err = s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+        ID: uuid.New(),
+        CreatedAt: time.Now(),
+        UpdatedAt: time.Now(),
+        UserID: user.ID,
+        FeedID: feed.ID,
+    })
+
+    if err != nil {
+        return fmt.Errorf("Failed to auto-follow after feed creation: %w", err)
+    }
+
+    fmt.Printf("Name: %v\nURL: %v\n-- Current user automatically follow created Feed --\n", feed.Name, feed.Url)
 
     return nil
 }
@@ -185,6 +198,63 @@ func handlerFeeds(s *state, cmd command) error {
         }
 
         fmt.Printf("---\nName: %v\nURL: %v\nUser: %v\n", feed.Name, feed.Url, user.Name)
+    }
+
+    return nil
+}
+
+func handlerFollow(s *state, cmd command) error {
+    if len(cmd.args) != 1 {
+        return errors.New("The follow command expects ONE argument")
+    }
+
+    feedName := cmd.args[0]
+
+    user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
+    if err != nil {
+        return fmt.Errorf("Failed to fetch current user: %w", err)
+    }
+
+    feed, err := s.db.GetFeedByURL(context.Background(), feedName)
+    if err != nil {
+        return fmt.Errorf("Failed to retrieve feed with provided URL: %w", err)
+    }
+
+    follow, err := s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+        ID: uuid.New(),
+        CreatedAt: time.Now(),
+        UpdatedAt: time.Now(),
+        UserID: user.ID,
+        FeedID: feed.ID,
+    })
+
+    if err != nil {
+        return fmt.Errorf("Failed to create follow data: %w", err)
+    }
+
+    fmt.Printf("Current user: %s\nSuccess on following %s\n", follow.UserName, follow.FeedName)
+
+    return nil
+}
+
+func handlerFollowing(s *state, cmd command) error {
+    if len(cmd.args) != 0 {
+        return errors.New("The following command expects ZERO arguments")
+    }
+
+    user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
+    if err != nil {
+        return fmt.Errorf("Failed to fetch current user: %w", err)
+    }
+
+    feeds, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
+    if err != nil {
+        return fmt.Errorf("Failed to fetch feed data for current user: %w", err)
+    }
+
+    fmt.Printf("Feeds followed by %s:\n", user.Name)
+    for _, feed := range(feeds) {
+        fmt.Printf("- %s\n", feed.FeedName)
     }
 
     return nil
