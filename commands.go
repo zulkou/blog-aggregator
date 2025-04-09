@@ -35,6 +35,21 @@ func (c *commands) run(s *state, cmd command) error {
     return handler(s, cmd)
 }
 
+func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) error) func(*state, command) error {
+    return func(s *state, cmd command) error {
+        if s.cfg.CurrentUserName == "" {
+            return errors.New("You need to logged in to use this function")
+        }
+
+        user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
+        if err != nil {
+            return fmt.Errorf("Authentication error: %w", err)
+        }
+
+        return handler(s, cmd, user)
+    }
+}
+
 func handlerLogin(s *state, cmd command) error {
     if len(cmd.args) != 1 {
         return errors.New("The login command expects ONE argument")
@@ -138,18 +153,13 @@ func handlerAgg(s *state, cmd command) error {
     return nil
 }
 
-func handlerAddFeed(s *state, cmd command) error {
+func handlerAddFeed(s *state, cmd command, user database.User) error {
     if len(cmd.args) != 2 {
         return errors.New("The addfeed command expects TWO arguments")
     }
 
     name := cmd.args[0]
     url := cmd.args[1]
-
-    user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
-    if err != nil {
-        return fmt.Errorf("Failed to fetch current user: %w", err)
-    }
 
     feed, err := s.db.CreateFeed(context.Background(), database.CreateFeedParams{
         ID: uuid.New(),
@@ -203,17 +213,12 @@ func handlerFeeds(s *state, cmd command) error {
     return nil
 }
 
-func handlerFollow(s *state, cmd command) error {
+func handlerFollow(s *state, cmd command, user database.User) error {
     if len(cmd.args) != 1 {
         return errors.New("The follow command expects ONE argument")
     }
 
     feedName := cmd.args[0]
-
-    user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
-    if err != nil {
-        return fmt.Errorf("Failed to fetch current user: %w", err)
-    }
 
     feed, err := s.db.GetFeedByURL(context.Background(), feedName)
     if err != nil {
@@ -237,14 +242,9 @@ func handlerFollow(s *state, cmd command) error {
     return nil
 }
 
-func handlerFollowing(s *state, cmd command) error {
+func handlerFollowing(s *state, cmd command, user database.User) error {
     if len(cmd.args) != 0 {
         return errors.New("The following command expects ZERO arguments")
-    }
-
-    user, err := s.db.GetUserByName(context.Background(), s.cfg.CurrentUserName)
-    if err != nil {
-        return fmt.Errorf("Failed to fetch current user: %w", err)
     }
 
     feeds, err := s.db.GetFeedFollowsForUser(context.Background(), user.ID)
