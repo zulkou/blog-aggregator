@@ -50,6 +50,36 @@ func middlewareLoggedIn(handler func(s *state, cmd command, user database.User) 
     }
 }
 
+func scrapeFeeds(s *state) error {
+    feed, err := s.db.GetNextFeedToFetch(context.Background())
+    if err != nil {
+        fmt.Printf("Reading DB fault: %v\n", err)
+        return fmt.Errorf("Failed to fetch next feed: %w", err)
+    }
+
+    err = s.db.MarkFeedFetched(context.Background(), database.MarkFeedFetchedParams{
+        ID: feed.ID,
+        LastFetchedAt: sql.NullTime{Time: time.Now(), Valid: true},
+        UpdatedAt: time.Now(),
+    })
+    if err != nil {
+        fmt.Printf("Marking fault: %v\n", err)
+        return fmt.Errorf("Failed to mark fetched feed: %w", err)
+    }
+
+    rssfeed, err := rss.FetchFeed(context.Background(), feed.Url)
+    if err != nil {
+        fmt.Printf("Fetching fault: %v\n", err)
+        return fmt.Errorf("Failed to fetch feed content: %w", err)
+    }
+
+    for _, rssitem := range(rssfeed.Channel.Item) {
+        fmt.Printf("- %s\n", rssitem.Title)
+    }
+
+    return nil
+}
+
 func handlerLogin(s *state, cmd command) error {
     if len(cmd.args) != 1 {
         return errors.New("The login command expects ONE argument")
@@ -137,18 +167,21 @@ func handlerUsers(s *state, cmd command) error {
 }
 
 func handlerAgg(s *state, cmd command) error {
-    if len(cmd.args) != 0 {
-        return errors.New("The agg command expects ZERO arguments")
+    if len(cmd.args) != 1 {
+        return errors.New("The agg command expects ONE arguments")
     }
 
-    url := "https://www.wagslane.dev/index.xml"
-
-    res, err := rss.FetchFeed(context.Background(), url)
+    time_between_reqs, err := time.ParseDuration(cmd.args[0])
     if err != nil {
-        return fmt.Errorf("Failed fetching feeds: %w", err)
+        return fmt.Errorf("Failed to parse input args: %w", err)
     }
 
-    fmt.Println(res)
+    fmt.Printf("Collecting feeds every %v\n", time_between_reqs)
+
+    ticker := time.NewTicker(time_between_reqs)
+    for ; ; <-ticker.C {
+        scrapeFeeds(s)
+    }
 
     return nil
 }
@@ -158,8 +191,8 @@ func handlerAddFeed(s *state, cmd command, user database.User) error {
         return errors.New("The addfeed command expects TWO arguments")
     }
 
-    name := cmd.args[0]
-    url := cmd.args[1]
+    url := cmd.args[0]
+    name := cmd.args[1]
 
     feed, err := s.db.CreateFeed(context.Background(), database.CreateFeedParams{
         ID: uuid.New(),
