@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
+    "strings"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
@@ -74,7 +76,50 @@ func scrapeFeeds(s *state) error {
     }
 
     for _, rssitem := range(rssfeed.Channel.Item) {
-        fmt.Printf("- %s\n", rssitem.Title)
+        pubDate, err := time.Parse(time.RFC1123Z, rssitem.PubDate)
+        if err != nil {
+            pubDate, err = time.Parse(time.RFC1123, rssitem.PubDate)
+            if err != nil {
+                pubDate, err = time.Parse(time.RFC822, rssitem.PubDate)
+                if err != nil {
+                    pubDate, err = time.Parse("2006-01-02T15:04:05Z", rssitem.PubDate)
+                    if err != nil {
+                        fmt.Printf("Could not parse date: %s, error: %v\n", rssitem.PubDate, err)
+                        pubDate = time.Now()
+                    }
+                }
+            }
+        }
+
+        var description sql.NullString
+        if rssitem.Description != "" {
+            description = sql.NullString{
+                String: rssitem.Description,
+                Valid: true,
+            }
+        } else {
+            description = sql.NullString{
+                Valid: false,
+            }
+        }
+
+        _, err = s.db.CreatePost(context.Background(), database.CreatePostParams{
+            ID: uuid.New(),
+            CreatedAt: time.Now(),
+            UpdatedAt: time.Now(),
+            Title: rssitem.Title,
+            Url: rssitem.Link,
+            Description: description,
+            PublishedAt: pubDate,
+            FeedID: feed.ID,
+        })
+        if err != nil {
+            if strings.Contains(err.Error(), "unique constraint") || 
+               strings.Contains(err.Error(), "duplicate key") {
+                continue
+            }
+            fmt.Printf("Failed to store %s: %v\n", rssitem.Title, err)
+        }
     }
 
     return nil
@@ -311,6 +356,37 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
     })
 
     fmt.Printf("Successfully unfollowed %s", feed.Name)
+
+    return nil
+}
+
+func handlerBrowse(s *state, cmd command, user database.User) error {
+    if len(cmd.args) > 1 {
+        return errors.New("The browse command expects ZERO or ONE arguments")
+    }
+
+    var limit int32
+    if len(cmd.args) == 1 {
+        parsed, err := strconv.ParseInt(cmd.args[0], 10, 32)
+        if err != nil {
+            return fmt.Errorf("Failed to convert input into integer: %w", err)
+        }
+        limit = int32(parsed)
+    } else {
+        limit = 2
+    }
+
+    posts, err := s.db.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+        UserID: user.ID,
+        Limit: limit,
+    })
+    if err != nil {
+        return fmt.Errorf("Failed to fetch posts: %w", err)
+    }
+
+    for _, post := range(posts) {
+        fmt.Printf("- %s\n", post.Title)
+    }
 
     return nil
 }
